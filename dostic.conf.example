@@ -1,0 +1,38 @@
+#################
+# BASIC OPTIONS #
+#################
+
+# Backup destination
+# For rclone syntax, see: https://restic.readthedocs.io/en/latest/030_preparing_a_new_repo.html#other-services-via-rclone
+RESTIC_REPOSITORY=rclone:remote:/directory
+
+# Restic hostname
+RESTIC_HOSTNAME=backup.example.com
+
+# Restic forget parameters, see https://restic.readthedocs.io/en/latest/060_forget.html
+RESTIC_FORGET_ARGS=(--prune --keep-tag keep --keep-within 7d --keep-weekly 8 --keep-monthly 12 --keep-yearly 3)
+
+# Include host directories
+BACKUP_DIRS=(/opt)
+
+####################
+# ADVANCED OPTIONS #
+####################
+
+# Used docker network
+DOCKER_NETWORK=backup
+
+# Internal IPv6 subnet
+DOCKER_IPV6_SUBNET=fd00:aaaa:ffff::/48
+
+# Tag of created docker container
+DOCKER_IMAGE=restic-rclone
+
+# Directory containing rclone config
+RCLONE_CONFIG=$DIR/config
+
+# File containing restic repository password
+RESTIC_PASSWORD_FILE=$DIR/restic_password
+
+# Volume containing restic cache
+RESTIC_CACHE_VOLUME=backup_restic_cache
