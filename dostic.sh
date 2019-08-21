@@ -102,6 +102,27 @@ docker network create --driver bridge --subnet "$DOCKER_IPV6_SUBNET" --ipv6 "$DO
 
     # start backup
     backup() {
+        # create arrays containing the first/last volume being backuped for each container
+        # used to execute precmd/postcmd only once
+        declare -A FIRSTVOL
+        declare -A LASTVOL
+        for volume in $(docker volume ls -q | grep -vE '^[0-9a-f]{64}$'); do
+            if [[ "$volume" == "$RESTIC_CACHE_VOLUME" ]]; then
+                continue
+            fi
+            
+            containers=$(get_containers_of_volume "$volume")
+            
+            # execute pre backup commands
+            while read -r container && test "$container"; do
+                if [ ! ${FIRSTVOL[$container]+_} ]; then
+                    FIRSTVOL[$container]="$volume"
+                fi
+                LASTVOL[$container]="$volume"
+            done <<< "$containers"
+        done
+            
+        # backup each named volume
         for volume in $(docker volume ls -q | grep -vE '^[0-9a-f]{64}$'); do
             echo "Volume: $volume"
             
@@ -115,7 +136,12 @@ docker network create --driver bridge --subnet "$DOCKER_IPV6_SUBNET" --ipv6 "$DO
             echo "$containers"
             
             # execute pre backup commands
-            while read -r container; do
+            while read -r container && test "$container"; do
+                # execute command only the first time
+                if [ "$volume" != "${FIRSTVOL[$container]}" ]; then
+                    continue;
+                fi
+                
                 cmd=$(get_precmd_of_container "$container")
                 # convert command string to bash array
                 # eval should be safe here, because setting docker labels requires root anyway
@@ -138,7 +164,12 @@ docker network create --driver bridge --subnet "$DOCKER_IPV6_SUBNET" --ipv6 "$DO
             fi
             
             # execute post backup commands
-            while read -r container; do
+            while read -r container && test "$container"; do
+                # execute command only the last time
+                if [ "$volume" != "${LASTVOL[$container]}" ]; then
+                    continue;
+                fi
+                
                 cmd=$(get_postcmd_of_container "$container")
                 # convert command string to bash array
                 # eval should be safe here, because setting docker labels requires root anyway
