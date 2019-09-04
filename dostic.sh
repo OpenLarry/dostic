@@ -34,6 +34,7 @@ docker network create --driver bridge --subnet "$DOCKER_IPV6_SUBNET" --ipv6 "$DO
 
 (
     set -e
+    set -o pipefail
     
     ##########
     # BACKUP #
