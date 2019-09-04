@@ -1,6 +1,6 @@
 Dostic: [Docker](https://www.docker.com/) volume backup and restore script using [Restic](https://restic.net/)
 ==============================================================================================================
-*Dostic* lets you backup all named Docker volumes into a restic repository and helps you to restore from it. It detects [MariaDB](https://mariadb.org/) volumes automatically and performs hot online backups using [Mariabackup](https://mariadb.com/kb/en/library/mariabackup-overview/).
+*Dostic* lets you backup all named Docker volumes into a restic repository and helps you to restore from it. It detects [MariaDB](https://mariadb.org/) and [MongoDB](https://www.mongodb.com/) volumes automatically and performs hot online backups using [Mariabackup](https://mariadb.com/kb/en/library/mariabackup-overview/) and [mongodump](https://docs.mongodb.com/manual/reference/program/mongodump/).
 
 Preparation
 -----------
@@ -33,7 +33,11 @@ Restore
 
 * Restore MariaDB volume:
   
-  `./dostic.sh restore_db <snapshot> <restic-xbstream> <mariadb-image> <volume-or-directory>`
+  `./dostic.sh restore_mariadb <snapshot> <restic-xbstream> <mariadb-image> <volume-or-directory>`
+
+* Restore MongoDB volume:
+  
+  `./dostic.sh restore_mongodb <snapshot> <restic-mdb> <mongo-image> <volume-or-directory>`
 
 Examples
 --------
@@ -57,7 +61,7 @@ Examples
     `docker create volume restored_database`
   - Restore data from latest snapshot using MariaDB 10.3 Docker image:
     
-    `./dostic.sh restore_db latest my_database mariadb:10.3 restored_database`
+    `./dostic.sh restore_mariadb latest my_database mariadb:10.3 restored_database`
 
 Miscellaneous
 -------------
