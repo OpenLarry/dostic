@@ -101,13 +101,13 @@ docker network create --driver bridge --subnet "$DOCKER_IPV6_SUBNET" --ipv6 "$DO
             "${RESTIC_FORGET_ARGS[@]}"
     }
 
-    # start backup
+    # start backup of volumes $1
     backup() {
         # create arrays containing the first/last volume being backuped for each container
         # used to execute precmd/postcmd only once
         declare -A FIRSTVOL
         declare -A LASTVOL
-        for volume in $(docker volume ls -q | grep -vE '^[0-9a-f]{64}$'); do
+        for volume in $1; do
             if [[ "$volume" == "$RESTIC_CACHE_VOLUME" ]]; then
                 continue
             fi
@@ -124,7 +124,7 @@ docker network create --driver bridge --subnet "$DOCKER_IPV6_SUBNET" --ipv6 "$DO
         done
             
         # backup each named volume
-        for volume in $(docker volume ls -q | grep -vE '^[0-9a-f]{64}$'); do
+        for volume in $1; do
             echo "Volume: $volume"
             
             if [[ "$volume" == "$RESTIC_CACHE_VOLUME" ]]; then
@@ -183,17 +183,6 @@ docker network create --driver bridge --subnet "$DOCKER_IPV6_SUBNET" --ipv6 "$DO
             
             echo "======================================================================="
         done
-
-        for dir in "${BACKUP_DIRS[@]}"; do
-            echo "Backup $dir"
-            backup_volume "$dir" "${dir:1}"
-        done
-
-        # clean up repository once a week
-        if [ $(date +%u) == 7 ]; then
-            echo "Forget"
-            forget
-        fi
     }
     
     ###########
@@ -285,7 +274,7 @@ docker network create --driver bridge --subnet "$DOCKER_IPV6_SUBNET" --ipv6 "$DO
         echo 
         echo 
         echo "Start backup:"
-        echo "./dostic.sh backup"
+        echo "./dostic.sh backup [<volume>]"
         echo 
         echo 
         echo "Restore regular data volume:"
@@ -310,7 +299,24 @@ docker network create --driver bridge --subnet "$DOCKER_IPV6_SUBNET" --ipv6 "$DO
         init
         ;;
     "backup")
-        backup
+        if [ "$#" == 1 ]; then
+            # backup each named volume
+            backup "$(docker volume ls -q | grep -vE '^[0-9a-f]{64}$')"
+            
+            # backup directories
+            for dir in "${BACKUP_DIRS[@]}"; do
+                echo "Backup $dir"
+                backup_volume "$dir" "${dir:1}"
+            done
+
+            # clean up repository once a week
+            if [ $(date +%u) == 7 ]; then
+                echo "Forget"
+                forget
+            fi
+        else
+            backup "$2"
+        fi
         ;;
     "restore_volume")
         if [ "$#" != 4 ]; then 
