@@ -40,12 +40,11 @@ docker network create --driver bridge --subnet "$DOCKER_IPV6_SUBNET" --ipv6 "$DO
     # BACKUP #
     ##########
     
-    # check if given volume contains mysql/mariadb data
-    is_db_volume() {
+    detect_volume() {
         docker run --rm \
             -v "$1:/mnt:ro" \
             ubuntu:latest \
-            /bin/bash -c "[ -d /mnt/mysql ]"
+            /bin/bash -c "( [ -d /mnt/mysql ] && echo mariadb ) || ( [ -f /mnt/storage.bson ] && echo mongodb ) || exit 0"
     }
 
     # output associated containers of given volume
@@ -82,7 +81,7 @@ docker network create --driver bridge --subnet "$DOCKER_IPV6_SUBNET" --ipv6 "$DO
     }
 
     # backup container $1 using mariabackup into restic file "$2.xbstream"
-    backup_db() {
+    backup_mariadb() {
         docker exec $1 \
             sh -c 'mariabackup --user root --password "$MYSQL_ROOT_PASSWORD" --backup --stream=xbstream' \
             | \
@@ -91,6 +90,18 @@ docker network create --driver bridge --subnet "$DOCKER_IPV6_SUBNET" --ipv6 "$DO
             "${RESTIC_DOCKER_PARAMS[@]}" \
             backup -r "$RESTIC_REPOSITORY" \
             --stdin --stdin-filename "$2.xbstream"
+    }
+
+    # backup container $1 using mongodump into compressed restic file "$2.mdb.gz"
+    backup_mongodb() {
+        docker exec $1 \
+            sh -c 'mongodump --archive | gzip -c --rsyncable -9 -' \
+            | \
+        docker run \
+            -i \
+            "${RESTIC_DOCKER_PARAMS[@]}" \
+            backup -r "$RESTIC_REPOSITORY" \
+            --stdin --stdin-filename "$2.mdb.gz"
     }
 
     # clean up repository
@@ -154,15 +165,25 @@ docker network create --driver bridge --subnet "$DOCKER_IPV6_SUBNET" --ipv6 "$DO
             done <<< "$containers"
             
             # backup
-            if is_db_volume "$volume"; then
-                echo "Detected database volume"
-                
-                # exit if database volume belongs to multiple containers (for whatever reason)
-                verify_container_count "$containers"
-                backup_db "$containers" "$volume"
-            else
-                backup_volume "$volume" "$volume"
-            fi
+            case $(detect_volume "$volume") in
+                "mariadb")
+                    echo "Detected mariadb volume"
+                    
+                    # exit if database volume belongs to multiple containers (for whatever reason)
+                    verify_container_count "$containers"
+                    backup_mariadb "$containers" "$volume"
+                    ;;
+                "mongodb")
+                    echo "Detected mongodb volume"
+                    
+                    # exit if database volume belongs to multiple containers (for whatever reason)
+                    verify_container_count "$containers"
+                    backup_mongodb "$containers" "$volume"
+                    ;;
+                *)
+                    backup_volume "$volume" "$volume"
+                    ;;
+            esac
             
             # execute post backup commands
             while read -r container && test "$container"; do
@@ -206,7 +227,7 @@ docker network create --driver bridge --subnet "$DOCKER_IPV6_SUBNET" --ipv6 "$DO
     }
 
     # restore restic snapshot $1 of mariabackup stream "$2.xbstream" using $3 docker image into volume $4
-    restore_db() {
+    restore_mariadb() {
         # copy and extract backup
         docker run \
             "${RESTIC_DOCKER_PARAMS[@]}" \
@@ -241,6 +262,32 @@ docker network create --driver bridge --subnet "$DOCKER_IPV6_SUBNET" --ipv6 "$DO
             --entrypoint "/bin/chmod" \
             "$3" \
             -R g+w "/var/lib/mysql"
+    }
+
+    # restore restic snapshot $1 of mongodb stream "$2.mdb.gz" using $3 docker image into volume $4
+    restore_mongodb() {
+        # start mongodb instance
+        containerid=$(docker run \
+            -d --rm \
+            -v "$4:/data/db" \
+            "$3")
+        
+        sleep 5
+        
+        # copy and extract backup
+        docker run \
+            "${RESTIC_DOCKER_PARAMS[@]}" \
+            dump "$1" -r "$RESTIC_REPOSITORY"  \
+            "/$2.mdb.gz" \
+            | \
+        docker exec \
+            -i \
+            "$containerid" \
+            "/bin/bash" \
+            -c 'gzip -c -d - | mongorestore --archive'
+
+        # stop mongodb instance
+        docker stop "$containerid"
     }
     
     #########
@@ -281,8 +328,11 @@ docker network create --driver bridge --subnet "$DOCKER_IPV6_SUBNET" --ipv6 "$DO
         echo "./dostic.sh restore_volume <snapshot> <restic-directory> <volume-or-directory>"
         echo
         echo "Restore MariaDB volume:"
-        echo "./dostic.sh restore_db <snapshot> <restic-xbstream> <mariadb-image> <volume-or-directory>"
-        echo 
+        echo "./dostic.sh restore_mariadb <snapshot> <restic-xbstream> <mariadb-image> <volume-or-directory>"
+        echo
+        echo "Restore MongoDB volume:"
+        echo "./dostic.sh restore_mongodb <snapshot> <restic-mdb> <mongodb-image> <volume-or-directory>"
+        echo
         echo 
         echo "List all restic snapshots:"
         echo "./dostic.sh list"
@@ -326,13 +376,21 @@ docker network create --driver bridge --subnet "$DOCKER_IPV6_SUBNET" --ipv6 "$DO
         shift
         restore_volume "$@"
         ;;
-    "restore_db")
+    "restore_mariadb")
+        if [ "$#" != 5 ]; then
+            print_help
+            exit 1
+        fi
+        shift
+        restore_mariadb "$@"
+        ;;
+    "restore_mongodb")
         if [ "$#" != 5 ]; then 
             print_help
             exit 1
         fi
         shift
-        restore_db "$@"
+        restore_mongodb "$@"
         ;;
     "list")
         run "snapshots"
