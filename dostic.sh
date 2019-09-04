@@ -80,16 +80,16 @@ docker network create --driver bridge --subnet "$DOCKER_IPV6_SUBNET" --ipv6 "$DO
             --exclude-if-present .nobackup "/backup/$2"
     }
 
-    # backup container $1 using mariabackup into restic file "$2.xbstream"
+    # backup container $1 using mariabackup into compressed restic file "$2.xbstream.gz"
     backup_mariadb() {
         docker exec $1 \
-            sh -c 'mariabackup --user root --password "$MYSQL_ROOT_PASSWORD" --backup --stream=xbstream' \
+            sh -c 'mariabackup --user root --password "$MYSQL_ROOT_PASSWORD" --backup --stream=xbstream | gzip -c --rsyncable -9' \
             | \
         docker run \
             -i \
             "${RESTIC_DOCKER_PARAMS[@]}" \
             backup -r "$RESTIC_REPOSITORY" \
-            --stdin --stdin-filename "$2.xbstream"
+            --stdin --stdin-filename "$2.xbstream.gz"
     }
 
     # backup container $1 using mongodump into compressed restic file "$2.mdb.gz"
@@ -226,20 +226,20 @@ docker network create --driver bridge --subnet "$DOCKER_IPV6_SUBNET" --ipv6 "$DO
             --target "/" --path "/backup/$2"
     }
 
-    # restore restic snapshot $1 of mariabackup stream "$2.xbstream" using $3 docker image into volume $4
+    # restore restic snapshot $1 of mariabackup stream "$2.xbstream.gz" using $3 docker image into volume $4
     restore_mariadb() {
         # copy and extract backup
         docker run \
             "${RESTIC_DOCKER_PARAMS[@]}" \
             dump "$1" -r "$RESTIC_REPOSITORY"  \
-            "/$2.xbstream" \
+            "/$2.xbstream.gz" \
             | \
         docker run \
             -i --rm \
             -v "$4:/var/lib/mysql" \
-            --entrypoint "/usr/bin/mbstream" \
+            --entrypoint "/bin/bash" \
             "$3" \
-            -x -C "/var/lib/mysql"
+            -c 'gzip -c -d - | mbstream -x -C "/var/lib/mysql"'
         
         # prepare backup
         docker run \
