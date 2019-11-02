@@ -1,7 +1,7 @@
 FROM restic/restic:latest
 
-ENV RCLONE_VERSION=current
-ENV ARCH=amd64
+ARG RCLONE_VERSION=current
+ARG ARCH=amd64
 ENV RCLONE_CONFIG="/config/rclone.conf"
 
 RUN apk -U add ca-certificates wget \
