@@ -393,7 +393,7 @@ docker network create --driver bridge --subnet "$DOCKER_IPV6_SUBNET" --ipv6 "$DO
         restore_mongodb "$@"
         ;;
     "list")
-        run "snapshots"
+        run "snapshots" --group-by paths
         ;;
     "exec")
         shift
